@@ -45,7 +45,7 @@ entity rx_path_top is
       clr_smpl_nr          : in std_logic;
       ld_smpl_nr           : in std_logic;
       smpl_nr_in           : in std_logic_vector(63 downto 0);
-      smpl_nr_cnt          : out std_logic_vector(63 downto 0);
+      smpl_nr_cnt          : buffer std_logic_vector(63 downto 0);
       --flag control
       tx_pct_loss          : in std_logic;
       tx_pct_loss_clr      : in std_logic;
@@ -53,8 +53,10 @@ entity rx_path_top is
       smpl_cmp_start       : in std_logic;
       smpl_cmp_length      : in std_logic_vector(15 downto 0);
       smpl_cmp_done        : out std_logic;
-      smpl_cmp_err         : out std_logic
-     
+      smpl_cmp_err         : out std_logic;
+      -- CM for external flag
+      ext_flag             : in std_logic
+
         );
 end rx_path_top;
 
@@ -80,6 +82,9 @@ signal fidm_sync              : std_logic;
 signal clr_smpl_nr_sync       : std_logic;
 signal ld_smpl_nr_sync        : std_logic;
 signal smpl_nr_in_sync        : std_logic_vector(63 downto 0);	
+-- CM
+signal ext_flag_sync          : std_logic;
+signal flag_capture_q         : std_logic_vector(63 downto 0);
 
 signal smpl_cmp_start_sync    : std_logic;
 signal smpl_cmp_length_sync   : std_logic_vector(15 downto 0);
@@ -150,6 +155,9 @@ port map(clk, '1', test_ptrn_en, test_ptrn_en_sync);
 sync_reg11 : entity work.sync_reg 
 port map(clk, '1', smpl_cmp_start, smpl_cmp_start_sync);
 
+--CM my reg:
+sync_reg12 : entity work.sync_reg
+port map(clk, '1', ext_flag, ext_flag_sync);
 
 bus_sync_reg0 : entity work.bus_sync_reg
 generic map (2)
@@ -328,9 +336,16 @@ begin
    if reset_n = '0' then 
       delay_chain <= (others=>(others=>'0'));
    elsif (clk'event AND clk='1') then 
+      if (ext_flag_sync='0') then -- CM flag_capture is updated every cycle until the flag goes high. -- do these need sync?
+         flag_capture_q <= '1' & smpl_nr_cnt(62 downto 0);
+      end if;
       for i in 0 to 5 loop
          if i=0 then 
-            delay_chain(i) <= inst3_q;
+            if (ext_flag_sync='0') then --CM does ext_flag need _sync?
+               delay_chain(i) <= inst3_q;
+            else
+               delay_chain(i) <= flag_capture_q;
+            end if;
          else 
             delay_chain(i) <= delay_chain(i-1);
          end if;
